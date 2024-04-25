@@ -50,6 +50,7 @@ defmodule Soap.Request.Params do
     errors =
       params
       |> Enum.map(&validate_param(&1, wsdl, operation))
+      |> List.flatten()
 
     case Enum.any?(errors) do
       true ->
@@ -73,19 +74,24 @@ defmodule Soap.Request.Params do
         nil
 
       _ ->
-        if Map.has_key?(val_map, k) do
-          validate_param_attributes(val_map, k, v)
-        else
-          "Invalid SOAP message:Invalid content was found starting with element '#{k}'. One of {#{Enum.join(Map.keys(val_map), ", ")}} is expected."
+        case Map.get(val_map, k) do
+          %{type: attribute_type} ->
+            [_, type] = String.split(attribute_type, ":")
+
+            if is_list(v) do
+              Enum.map(v, &validate_param(&1, wsdl, type))
+            else
+              validate_param_attributes(k, v, type)
+            end
+
+          nil ->
+            "Invalid SOAP message:Invalid content was found starting with element '#{k}'. One of {#{Enum.join(Map.keys(val_map), ", ")}} is expected."
         end
     end
   end
 
-  @spec validate_param_attributes(val_map :: map(), k :: String.t(), v :: String.t()) :: String.t() | nil
-  defp validate_param_attributes(val_map, k, v) do
-    attributes = val_map[k]
-    [_, type] = String.split(attributes.type, ":")
-
+  @spec validate_param_attributes(k :: String.t(), v :: String.t(), type :: String.t()) :: String.t() | nil
+  defp validate_param_attributes(k, v, type) do
     validate_type(k, v, type)
   end
 
